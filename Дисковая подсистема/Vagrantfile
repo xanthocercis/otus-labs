@@ -1,21 +1,97 @@
+# -*- mode: ruby -*-
+# vim: set ft=ruby :
+
+MACHINES = {
+  :otuslinux => {
+    :box_name => "centos/7",
+    :ip_addr => '192.168.11.101',
+    :disks => {
+      :sata1 => { :dfile => './sata1.vdi', :size => 250, :port => 1 },
+      :sata2 => { :dfile => './sata2.vdi', :size => 250, :port => 2 },
+      :sata3 => { :dfile => './sata3.vdi', :size => 250, :port => 3 },
+      :sata4 => { :dfile => './sata4.vdi', :size => 250, :port => 4 },
+      :sata5 => { :dfile => './sata5.vdi', :size => 250, :port => 5 },
+      :sata6 => { :dfile => './sata6.vdi', :size => 250, :port => 6 }
+    }
+  }
+}
+
 Vagrant.configure("2") do |config|
-  config.vm.box = "ubuntu/bionic64"
-  config.vm.network "private_network", type: "dhcp"
-  
-  config.vm.provider "virtualbox" do |vb|
-    (1..3).each do |i|
-      vb.customize ["createhd", "--filename", "disk#{i}.vdi", "--size", "10240"]
-      vb.customize ["storageattach", :id, "--storagectl", "SATA Controller", "--port", i, "--device", 0, "--type", "hdd", "--medium", "disk#{i}.vdi"]
+  MACHINES.each do |boxname, boxconfig|
+    config.vm.define boxname do |box|
+      box.vm.box = boxconfig[:box_name]
+      box.vm.host_name = boxname.to_s
+      box.vm.network "private_network", ip: boxconfig[:ip_addr]
+
+      box.vm.provider :virtualbox do |vb|
+        vb.customize ["modifyvm", :id, "--memory", "1024"]
+        needsController = false
+        boxconfig[:disks].each do |dname, dconf|
+          unless File.exist?(dconf[:dfile])
+            vb.customize ['createhd', '--filename', dconf[:dfile], '--variant', 'Fixed', '--size', dconf[:size]]
+            needsController = true
+          end
+        end
+        if needsController
+          vb.customize ["storagectl", :id, "--name", "SATA", "--add", "sata"]
+          boxconfig[:disks].each do |dname, dconf|
+            vb.customize ['storageattach', :id, '--storagectl', 'SATA', '--port', dconf[:port], '--device', 0, '--type', 'hdd', '--medium', dconf[:dfile]]
+          end
+        end
+      end
+
+      box.vm.provision "shell", inline: <<-SHELL
+ cat << EOF > /etc/yum.repos.d/CentOS-Base.repo
+[base]
+name=CentOS-7 - Base
+baseurl=https://vault.centos.org/7.9.2009/os/x86_64/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+enabled=1
+
+[updates]
+name=CentOS-7 - Updates
+baseurl=https://vault.centos.org/7.9.2009/updates/x86_64/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+enabled=1
+
+[extras]
+name=CentOS-7 - Extras
+baseurl=https://vault.centos.org/7.9.2009/extras/x86_64/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+enabled=1
+EOF
+	yum clean all
+	yum makecache
+
+        connection_name=$(nmcli -t -f NAME connection show --active | head -n 1)
+        if [ -n "$connection_name" ]; then
+          nmcli con mod "$connection_name" ipv4.dns "8.8.8.8 1.1.1.1" ipv4.ignore-auto-dns yes
+          nmcli con up "$connection_name"
+        fi
+
+        mkdir -p ~root/.ssh
+        cp ~vagrant/.ssh/auth* ~root/.ssh
+        yum install -y mdadm smartmontools hdparm gdisk
+
+        # Создаём RAID 0 из всех шести дисков
+        mdadm --create --verbose /dev/md0 --level=0 --raid-devices=6 /dev/sd[b-g]
+        
+        # Проверяем статус RAID
+        cat /proc/mdstat
+        
+        # Создаём файловую систему на RAID-массиве
+        mkfs.xfs /dev/md0
+        
+        # Монтируем RAID-массив в /mnt/raid0
+        mkdir -p /mnt/raid0
+        mount /dev/md0 /mnt/raid0
+        
+        # Добавляем в /etc/fstab для автоматического монтирования при загрузке
+        echo '/dev/md0 /mnt/raid0 xfs defaults 0 0' >> /etc/fstab
+      SHELL
     end
   end
-
-  config.vm.provision "shell", inline: <<-SHELL
-    sudo apt-get update
-    sudo apt-get install -y mdadm parted
-    sudo mdadm --create --verbose /dev/md0 --level=5 --raid-devices=3 /dev/sdb /dev/sdc /dev/sdd
-    sudo mkfs.ext4 /dev/md0
-    sudo mkdir -p /mnt/raid
-    sudo mount /dev/md0 /mnt/raid
-    echo '/dev/md0 /mnt/raid ext4 defaults 0 0' | sudo tee -a /etc/fstab
-  SHELL
 end
