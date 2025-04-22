@@ -1,0 +1,72 @@
+---
+- name: Configure PAM and Docker
+  hosts: all
+  become: yes
+  tasks:
+    # Установка необходимых пакетов
+    - name: Install required packages
+      apt:
+        name:
+          - docker.io
+        state: present
+        update_cache: yes
+
+    # Создание пользователей
+    - name: Create user otusadm
+      user:
+        name: otusadm
+        password: Otus2022!
+        state: present
+
+    - name: Create user otus
+      user:
+        name: otus
+        password: Otus2022!
+        state: present
+
+    # Создание группы admin
+    - name: Create admin group
+      group:
+        name: admin
+        state: present
+
+    # Добавление пользователей в группу admin
+    - name: Add users to admin group
+      user:
+        name: "{{ item }}"
+        groups: admin
+        append: yes
+      loop:
+        - otusadm
+        - root
+        - vagrant
+
+    # Копирование скрипта login.sh
+    - name: Copy login.sh script
+      copy:
+        src: files/login.sh
+        dest: /usr/local/bin/login.sh
+        mode: '0755'
+
+    # Настройка PAM для sshd
+    - name: Configure PAM for sshd
+      lineinfile:
+        path: /etc/pam.d/sshd
+        insertafter: '^auth\s+substack\s+password-auth'
+        line: 'auth required pam_exec.so debug /usr/local/bin/login.sh'
+
+    # Добавление otusadm в группу docker
+    - name: Add otusadm to docker group
+      user:
+        name: otusadm
+        groups: docker
+        append: yes
+
+    # Разрешение otusadm перезапускать сервис docker
+    - name: Allow otusadm to restart docker service
+      lineinfile:
+        path: /etc/sudoers.d/otusadm
+        line: 'otusadm ALL=(ALL) NOPASSWD: /bin/systemctl restart docker.service'
+        create: yes
+        mode: '0440'
+        validate: 'visudo -cf %s'
