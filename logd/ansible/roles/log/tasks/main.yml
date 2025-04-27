@@ -1,1 +1,22 @@
+- name: Install rsyslog
+  apt:
+    name: rsyslog
+    state: present
 
+- name: Configure rsyslog as log server
+  template:
+    src: rsyslog-log.conf.j2
+    dest: /etc/rsyslog.d/30-log.conf
+  notify: Restart rsyslog
+
+- name: Create log directories
+  file:
+    path: "/var/log/remote/{{ item }}"
+    state: directory
+    owner: syslog
+    group: syslog
+  loop:
+    - nginx
+    - audit
+
+- meta: flush_handlers
