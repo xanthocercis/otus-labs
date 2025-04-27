@@ -1,1 +1,17 @@
+module(load="imtcp")
+input(type="imtcp" port="514" ruleset="remote_logs")
+input(type="imtcp" port="60" ruleset="audit_logs")
 
+# Ruleset for general logs
+ruleset(name="remote_logs") {
+    $template RemoteLogs,"/var/log/remote/nginx/%HOSTNAME%_%PROGRAMNAME%.log"
+    :programname, contains, "nginx_" ?RemoteLogs
+    & stop
+}
+
+# Ruleset for audit logs
+ruleset(name="audit_logs") {
+    $template AuditLogs,"/var/log/remote/audit/%HOSTNAME%_audit.log"
+    *.* ?AuditLogs
+    & stop
+}
