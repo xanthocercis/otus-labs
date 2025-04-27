@@ -1,0 +1,22 @@
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 768;
+}
+
+http {
+    # Syslog configuration
+    error_log syslog:server=localhost,facility=local7,tag=nginx_error,severity=error;
+    access_log syslog:server=localhost,facility=local7,tag=nginx_access,severity=info combined;
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    server {
+        listen 80;
+        root /var/www/html;
+        index index.html;
+    }
+}

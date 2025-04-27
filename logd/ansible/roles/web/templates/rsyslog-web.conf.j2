@@ -1,0 +1,8 @@
+# Local critical logs
+*.crit /var/log/critical.log
+
+# Forward all nginx logs to log server
+if $programname startswith 'nginx_' then @{{ log_server_ip }}:514
+
+# Forward audit logs
+if $msg contains 'nginx_config' then @{{ log_server_ip }}:514
