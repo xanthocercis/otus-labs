@@ -1,1 +1,41 @@
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+  notify: Restart Nginx
 
+- name: Configure Nginx to use syslog
+  template:
+    src: nginx-syslog.conf.j2
+    dest: /etc/nginx/nginx.conf
+  notify: Restart Nginx
+
+- name: Install rsyslog
+  apt:
+    name: rsyslog
+    state: present
+
+- name: Configure rsyslog for web server
+  template:
+    src: rsyslog-web.conf.j2
+    dest: /etc/rsyslog.d/30-web.conf
+  notify: Restart rsyslog
+
+- name: Install auditd
+  apt:
+    name: auditd
+    state: present
+
+- name: Configure audit rules
+  template:
+    src: auditd-nginx.rules.j2
+    dest: /etc/audit/rules.d/nginx.rules
+  notify: Restart auditd
+
+- name: Configure audisp-remote
+  template:
+    src: audisp-remote.conf.j2
+    dest: /etc/audisp/audisp-remote.conf
+  notify: Restart auditd
+
+- meta: flush_handlers
