@@ -1,4 +1,4 @@
-- hosts: log
+- hosts: web
   become: yes
   roles:
-    - log
+    - web
